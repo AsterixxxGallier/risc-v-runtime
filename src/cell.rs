@@ -10,9 +10,7 @@ macro_rules! cell {
 
         impl Default for $cell {
             fn default() -> Self {
-                Self {
-                    signed: 0
-                }
+                Self { signed: 0 }
             }
         }
 
@@ -28,17 +26,13 @@ macro_rules! cell {
 
         impl From<$signed> for $cell {
             fn from(value: $signed) -> Self {
-                Self {
-                    signed: value,
-                }
+                Self { signed: value }
             }
         }
 
         impl From<$unsigned> for $cell {
             fn from(value: $unsigned) -> Self {
-                Self {
-                    unsigned: value,
-                }
+                Self { unsigned: value }
             }
         }
 
@@ -67,10 +61,10 @@ macro_rules! convert_cell {
                 }
             }
         }
-        
+
         impl TryFrom<&[$small]> for $big {
             type Error = ();
-        
+
             fn try_from(value: &[$small]) -> Result<Self, Self::Error> {
                 if value.len() == $factor {
                     Ok(Self::from([$(value[$part]),*]))
@@ -79,7 +73,7 @@ macro_rules! convert_cell {
                 }
             }
         }
-        
+
         impl From<$big> for [$small; $factor] {
             fn from(value: $big) -> Self {
                 [$($small::from((value.unsigned() >> $index) as $small_unsigned)),*]

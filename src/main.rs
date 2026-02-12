@@ -3,7 +3,10 @@ use cell::{Cell32, Cell8};
 use std::fmt::Debug;
 use std::ops::{BitAnd, BitOr, BitXor, Index, Not, RangeBounds, Shl, Shr};
 
+mod asm;
 mod cell;
+
+pub use asm::assemble;
 
 fn mask_first<L, N>(
     length: L,
@@ -203,15 +206,15 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
                     (0x6, _) => rs1_value.bitor(immediate),
                     // andi
                     (0x7, _) => rs1_value.bitand(immediate),
-                    // sll
+                    // slli
                     (0x1, 0x00) => rs1_value.wrapping_shl(immediate),
-                    // srl
+                    // srli
                     (0x5, 0x00) => rs1_value.wrapping_shr(immediate),
-                    // sra
+                    // srai
                     (0x5, 0x20) => (rs1_value as i32).wrapping_shr(immediate) as u32,
-                    // slt
+                    // slti
                     (0x2, _) => ((rs1_value as i32) < (immediate as i32)) as u32,
-                    // sltu
+                    // sltiu
                     (0x3, _) => (rs1_value < immediate) as u32,
                     _ => return Err(ExecutionError::BadInstruction(instruction)),
                 };
@@ -378,71 +381,88 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
 }
 
 fn main() {
-    /*
-    convert_null_terminated_to_pascal:
-      # a0 = pointer to first byte
-      # t0 = pointer to current byte
-      mv t0, a0
-    start_of_loop:
-      # t1 = current byte
-      lb t1, 0(t0)
-      # break loop if null
-      beq t1, zero, end_of_loop
-      # increment current byte pointer
-      addi t0, t0, 1
-      j start_of_loop
-    end_of_loop:
-      # t0 = pointer to last byte (= null)
-      # t2 = length of string
-      sub t2, t0, a0
-    start_of_loop_2:
-      # break loop if start of string has been reached
-      beq t0, a0, end_of_loop_2
-      # t1 = current byte
-      lb t1, -1(t0)
-      # move it one forward
-      sb t1, 0(t0)
-      # decrement current byte pointer
-      addi t0, t0, -1
-      j start_of_loop_2
-    end_of_loop_2:
-      sb t2, 0(a0)
-      jr ra
-     */
+    let code = "\
+addi x10, x0, 1
+addi x11, x0, 1
+addi x1, x0, 0
+addi x2, x0, 100
+start:
+beq x1, x2, end
+addi x1, x1, 1
+ecall
+jal x0, start
+end:
+ebreak
+";
+    let instructions = assemble(code).unwrap();
+
+    println!("instructions hex dump:");
+    for instruction in &instructions {
+        println!("{instruction:08x}");
+    }
+    println!();
+    println!();
 
     let mut runtime = Runtime::<0x200>::new();
-    let hex_dump: [u32; _] = [
-        0x00050293,
-        0x00028303,
-        0x00030663,
-        0x00128293,
-        0xff5ff06f,
-        0x40a283b3,
-        0x00a28a63,
-        0xfff28303,
-        0x00628023,
-        0xfff28293,
-        0xff1ff06f,
-        0x00750023,
-        // ecall instead of jr ra
-        0b0000000_00000_00000_000_00000_1110011,
-    ];
-    for (index, instruction) in hex_dump.into_iter().enumerate() {
+    for (index, instruction) in instructions.into_iter().enumerate() {
         runtime.write_to_memory_32(index * 4, instruction);
     }
-    let data: [u8; _] = [
-        11,
-        22,
-        33,
-        44,
-        0,
-    ];
-    for (index, byte) in data.into_iter().enumerate() {
-        runtime.write_to_memory_8(0x100 + index, byte);
+
+    loop {
+        match runtime.run() {
+            Ok(status) => {
+                match status {
+                    ExecutionStatus::Done => {
+                        println!("program finished");
+                        break;
+                    }
+                    ExecutionStatus::EnvironmentCallExecuted => {
+                        let a0_value = runtime.read_i_register(10);
+                        match a0_value.unsigned() {
+                            0 => {
+                                // print registers
+                                println!("reg  hex.....  dec");
+                                for index in 0..32 {
+                                    let value = runtime.read_i_register(index);
+                                    if index < 10 {
+                                        print!(" ");
+                                    }
+                                    print!("x{index}  ");
+                                    print!("{:08x}  ", value.unsigned());
+                                    println!("{}", value.signed());
+                                }
+                            }
+                            1 => {
+                                // print register specified by a1
+                                let a1_value = runtime.read_i_register(11);
+                                let register_index = a1_value.unsigned() as usize;
+                                if register_index > 32 {
+                                    println!("bad register index {register_index} requested");
+                                } else {
+                                    let register_value = runtime.read_i_register(register_index);
+                                    print!("x{register_index} = ");
+                                    print!("{:08x}, ", register_value.unsigned());
+                                    println!("{}", register_value.signed());
+                                }
+                            }
+                            other => {
+                                println!("unrecognized ecall request code: {other}");
+                            }
+                        }
+                        let program_counter = runtime.read_program_counter();
+                        runtime
+                            .write_to_program_counter(program_counter.unsigned().wrapping_add(4));
+                    }
+                    ExecutionStatus::EnvironmentBreakExecuted => {
+                        println!("environment break executed, exiting program");
+                        break;
+                    }
+                }
+            }
+            Err(error) => {
+                println!("execution error encountered: {error:?}, exiting program");
+                break;
+            }
+        }
     }
-    runtime.write_to_i_register(10, 0x100);
-    assert_eq!(runtime.run(), Ok(ExecutionStatus::EnvironmentCallExecuted));
-    assert_eq!(runtime.read_program_counter(), (12 * 4).into());
-    let result = runtime.read_memory(0x100..(0x100 + data.len()));
-    println!("{result:?}");
 }

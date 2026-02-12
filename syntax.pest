@@ -1,0 +1,96 @@
+WHITESPACE   = _{ " "+ }
+program      =  { (line | empty_line) ~ (NEWLINE ~ (line | empty_line))* }
+empty_line   = _{ comment? }
+comment      = _{ "#" ~ (!NEWLINE ~ ANY)* }
+line         = _{ label | instr }
+ident        =  { ('a'..'z' | "_")+ }
+label        =  { ident ~ ":" }
+instr        =  {
+    instr_lb
+  | instr_lh
+  | instr_lw
+  | instr_lbu
+  | instr_lhu
+  | instr_addi
+  | instr_slli
+  | instr_slti
+  | instr_sltiu
+  | instr_xori
+  | instr_srli
+  | instr_srai
+  | instr_ori
+  | instr_andi
+  | instr_auipc
+  | instr_sb
+  | instr_sh
+  | instr_sw
+  | instr_add
+  | instr_sub
+  | instr_sll
+  | instr_slt
+  | instr_sltu
+  | instr_xor
+  | instr_srl
+  | instr_sra
+  | instr_or
+  | instr_and
+  | instr_lui
+  | instr_beq
+  | instr_bne
+  | instr_blt
+  | instr_bge
+  | instr_bltu
+  | instr_bgeu
+  | instr_jalr
+  | instr_jal
+  | instr_ecall
+  | instr_ebreak
+}
+instr_lb     =  { "lb " ~ reg ~ "," ~ imm_reg }
+instr_lh     =  { "lh " ~ reg ~ "," ~ imm_reg }
+instr_lw     =  { "lw " ~ reg ~ "," ~ imm_reg }
+instr_lbu    =  { "lbu " ~ reg ~ "," ~ imm_reg }
+instr_lhu    =  { "lhu " ~ reg ~ "," ~ imm_reg }
+instr_addi   =  { "addi " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_slli   =  { "slli " ~ reg ~ "," ~ reg ~ "," ~ uimm }
+instr_slti   =  { "slti " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_sltiu  =  { "sltiu " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_xori   =  { "xori " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_srli   =  { "srli " ~ reg ~ "," ~ reg ~ "," ~ uimm }
+instr_srai   =  { "srai " ~ reg ~ "," ~ reg ~ "," ~ uimm }
+instr_ori    =  { "ori " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_andi   =  { "andi " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_auipc  =  { "auipc " ~ reg ~ "," ~ upimm }
+instr_sb     =  { "sb " ~ reg ~ "," ~ imm_reg }
+instr_sh     =  { "sh " ~ reg ~ "," ~ imm_reg }
+instr_sw     =  { "sw " ~ reg ~ "," ~ imm_reg }
+instr_add    =  { "add " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_sub    =  { "sub " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_sll    =  { "sll " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_slt    =  { "slt " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_sltu   =  { "sltu " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_xor    =  { "xor " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_srl    =  { "srl " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_sra    =  { "sra " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_or     =  { "or " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_and    =  { "and " ~ reg ~ "," ~ reg ~ "," ~ reg }
+instr_lui    =  { "lui " ~ reg ~ "," ~ upimm }
+instr_beq    =  { "beq " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_bne    =  { "bne " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_blt    =  { "blt " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_bge    =  { "bge " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_bltu   =  { "bltu " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_bgeu   =  { "bgeu " ~ reg ~ "," ~ reg ~ "," ~ ident }
+instr_jalr   =  { "jalr " ~ reg ~ "," ~ reg ~ "," ~ imm }
+instr_jal    =  { "jal " ~ reg ~ "," ~ ident }
+instr_ecall  =  { "ecall" }
+instr_ebreak =  { "ebreak" }
+reg          = @{ "x" ~ ("30" | "31" | '1'..'2' ~ '0'..'9' | '0'..'9') }
+imm_reg      =  { imm ~ "(" ~ reg ~ ")" }
+imm          =  { dec_imm }
+dec_imm      = @{ "-"? ~ dec }
+uimm         =  { dec_uimm }
+dec_uimm     =  { dec }
+upimm        =  { dec_upimm }
+dec_upimm    =  { dec }
+dec          = @{ '1'..'9' ~ '0'..'9'* | "0" }
