@@ -382,16 +382,57 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
 
 fn main() {
     let code = "\
-addi x10, x0, 1
-addi x11, x0, 1
-addi x1, x0, 0
+# construct string
+# x1 = string address
+addi x1, x0, 256
+# x2 = byte to store
+# H
+addi x2, x0, 72
+sb x2, 0(x1)
+# e
+addi x2, x0, 101
+sb x2, 1(x1)
+# l
+addi x2, x0, 108
+sb x2, 2(x1)
+# l
+addi x2, x0, 108
+sb x2, 3(x1)
+# o
+addi x2, x0, 111
+sb x2, 4(x1)
+# space
+addi x2, x0, 32
+sb x2, 5(x1)
+# w
+addi x2, x0, 119
+sb x2, 6(x1)
+# o
+addi x2, x0, 111
+sb x2, 7(x1)
+# r
+addi x2, x0, 114
+sb x2, 8(x1)
+# l
+addi x2, x0, 108
+sb x2, 9(x1)
+# d
 addi x2, x0, 100
-start:
-beq x1, x2, end
-addi x1, x1, 1
+sb x2, 10(x1)
+# !
+addi x2, x0, 33
+sb x2, 11(x1)
+# newline
+addi x2, x0, 10
+sb x2, 12(x1)
+# null
+addi x2, x0, 0
+sb x2, 13(x1)
+
+# print string
+addi x10, x0, 2
+addi x11, x1, 0
 ecall
-jal x0, start
-end:
 ebreak
 ";
     let instructions = assemble(code).unwrap();
@@ -443,6 +484,34 @@ ebreak
                                     print!("x{register_index} = ");
                                     print!("{:08x}, ", register_value.unsigned());
                                     println!("{}", register_value.signed());
+                                }
+                            }
+                            2 => {
+                                // print null-terminated string at memory address in a1
+                                let a1_value = runtime.read_i_register(11);
+                                let address = a1_value.unsigned() as usize;
+                                if address >= runtime.memory.len() {
+                                    println!("bad memory address {address}");
+                                } else {
+                                    let mut string_bytes = Vec::new();
+                                    let mut running_address = address;
+                                    loop {
+                                        let byte = runtime.read_memory_8(running_address);
+                                        if byte.unsigned() == 0 {
+                                            break;
+                                        }
+                                        string_bytes.push(byte.unsigned());
+                                        running_address = running_address.wrapping_add(1);
+                                        running_address %= runtime.memory.len();
+                                    }
+                                    match String::from_utf8(string_bytes) {
+                                        Ok(string) => {
+                                            print!("{string}");
+                                        }
+                                        Err(_error) => {
+                                            println!("string not valid UTF8");
+                                        }
+                                    }
                                 }
                             }
                             other => {
