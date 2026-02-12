@@ -326,11 +326,7 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
                     return Err(ExecutionError::BadInstruction(instruction));
                 }
                 self.write_to_i_register(rd, program_counter.wrapping_add(4));
-                self.write_to_program_counter(
-                    program_counter
-                        .wrapping_add(rs1_value)
-                        .wrapping_add(immediate),
-                );
+                self.write_to_program_counter(rs1_value.wrapping_add(immediate));
                 Ok(ExecutionStatus::Done)
             }
             0b0110111 => {
