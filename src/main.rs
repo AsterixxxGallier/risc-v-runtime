@@ -27,8 +27,16 @@ where
     (n >> start) & !(!N::default() << length)
 }
 
+fn has_one_at(n: u32, index: u32) -> bool {
+    (n >> index) & 1 == 1
+}
+
 fn sign_extend_from(length: u32, n: u32) -> u32 {
-    (1u32 << length).checked_sub(n).unwrap().wrapping_neg()
+    if has_one_at(n, length - 1) {
+        n | (u32::MAX << length)
+    } else {
+        n
+    }
 }
 
 pub struct Runtime<const MEMORY: usize> {
@@ -370,14 +378,71 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
 }
 
 fn main() {
-    let mut runtime = Runtime::<8>::new();
-    runtime.write_to_memory_32(0, 0b0000000_00010_00001_000_00011_0110011);
-    runtime.write_to_memory_32(4, 0b0000000_00000_00000_000_00000_1110011);
-    runtime.write_to_i_register(1, 3);
-    runtime.write_to_i_register(2, -1);
+    /*
+    convert_null_terminated_to_pascal:
+      # a0 = pointer to first byte
+      # t0 = pointer to current byte
+      mv t0, a0
+    start_of_loop:
+      # t1 = current byte
+      lb t1, 0(t0)
+      # break loop if null
+      beq t1, zero, end_of_loop
+      # increment current byte pointer
+      addi t0, t0, 1
+      j start_of_loop
+    end_of_loop:
+      # t0 = pointer to last byte (= null)
+      # t2 = length of string
+      sub t2, t0, a0
+    start_of_loop_2:
+      # break loop if start of string has been reached
+      beq t0, a0, end_of_loop_2
+      # t1 = current byte
+      lb t1, -1(t0)
+      # move it one forward
+      sb t1, 0(t0)
+      # decrement current byte pointer
+      addi t0, t0, -1
+      j start_of_loop_2
+    end_of_loop_2:
+      sb t2, 0(a0)
+      jr ra
+     */
+
+    let mut runtime = Runtime::<0x200>::new();
+    let hex_dump: [u32; _] = [
+        0x00050293,
+        0x00028303,
+        0x00030663,
+        0x00128293,
+        0xff5ff06f,
+        0x40a283b3,
+        0x00a28a63,
+        0xfff28303,
+        0x00628023,
+        0xfff28293,
+        0xff1ff06f,
+        0x00750023,
+        // ecall instead of jr ra
+        0b0000000_00000_00000_000_00000_1110011,
+    ];
+    for (index, instruction) in hex_dump.into_iter().enumerate() {
+        runtime.write_to_memory_32(index * 4, instruction);
+    }
+    let data: [u8; _] = [
+        11,
+        22,
+        33,
+        44,
+        0,
+    ];
+    for (index, byte) in data.into_iter().enumerate() {
+        runtime.write_to_memory_8(0x100 + index, byte);
+    }
+    runtime.write_to_i_register(10, 0x100);
     assert_eq!(runtime.run(), Ok(ExecutionStatus::EnvironmentCallExecuted));
-    assert_eq!(runtime.read_program_counter(), 4.into());
-    assert_eq!(runtime.read_i_register(1), 3.into());
-    assert_eq!(runtime.read_i_register(2), (-1).into());
-    assert_eq!(runtime.read_i_register(3), 2.into());
+    assert_eq!(runtime.read_program_counter(), (12 * 4).into());
+    let result = runtime.read_memory(0x100..(0x100 + data.len()));
+    println!("{result:?}");
 }
