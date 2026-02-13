@@ -15,46 +15,48 @@ fn register(pair: Pair<Rule>) -> u32 {
 
 fn immediate(pair: Pair<Rule>) -> Result<u32, String> {
     let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::dec_imm => {
-            let signed: i32 = inner.as_str().parse().unwrap();
-            if signed < -(1 << 11) || signed >= (1 << 11) {
-                Err(format!("immediate {signed} out of range"))
-            } else {
-                Ok(signed as u32)
-            }
-        }
+    let value: i32 = match inner.as_rule() {
+        Rule::dec_imm => inner.as_str().parse().unwrap(),
+        Rule::hex_imm => {
+            let string = inner.as_str();
+            let negative = string.starts_with("-");
+            let digits = if negative { &string[3..] } else { &string[2..] };
+            i32::from_str_radix(digits, 16).unwrap()
+        },
         _ => unreachable!(),
+    };
+    if value < -(1 << 11) || value >= (1 << 11) {
+        Err(format!("immediate {value} out of range"))
+    } else {
+        Ok(value as u32)
     }
 }
 
 fn unsigned_immediate(pair: Pair<Rule>) -> Result<u32, String> {
     let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::dec_uimm => {
-            let unsigned: u32 = inner.as_str().parse().unwrap();
-            if unsigned >= (1 << 5) {
-                Err(format!("immediate {unsigned} out of range"))
-            } else {
-                Ok(unsigned)
-            }
-        }
+    let value: u32 = match inner.as_rule() {
+        Rule::dec_uimm => inner.as_str().parse().unwrap(),
+        Rule::hex_uimm => u32::from_str_radix(&inner.as_str()[2..], 16).unwrap(),
         _ => unreachable!(),
+    };
+    if value >= (1 << 5) {
+        Err(format!("immediate {value} out of range"))
+    } else {
+        Ok(value)
     }
 }
 
 fn upper_immediate(pair: Pair<Rule>) -> Result<u32, String> {
     let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::dec_upimm => {
-            let unsigned: u32 = inner.as_str().parse().unwrap();
-            if unsigned >= (1 << 20) {
-                Err(format!("immediate {unsigned} out of range"))
-            } else {
-                Ok(unsigned)
-            }
-        }
+    let value: u32 = match inner.as_rule() {
+        Rule::dec_uimm => inner.as_str().parse().unwrap(),
+        Rule::hex_uimm => u32::from_str_radix(&inner.as_str()[2..], 16).unwrap(),
         _ => unreachable!(),
+    };
+    if value >= (1 << 20) {
+        Err(format!("immediate {value} out of range"))
+    } else {
+        Ok(value)
     }
 }
 
