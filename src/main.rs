@@ -1,6 +1,7 @@
 use crate::cell::Cell16;
 use cell::{Cell32, Cell8};
 use std::fmt::Debug;
+use std::io::stdin;
 use std::ops::{BitAnd, BitOr, BitXor, Index, Not, RangeBounds, Shl, Shr};
 
 mod asm;
@@ -376,71 +377,265 @@ impl<const MEMORY: usize> Runtime<MEMORY> {
     }
 }
 
+impl<const MEMORY: usize> Runtime<MEMORY> {
+    fn dump_registers(&self) {
+        println!("reg  hex.....  dec");
+        let program_counter = self.read_program_counter();
+        println!(
+            " pc  {:08x}  {}",
+            program_counter.unsigned(),
+            program_counter.signed()
+        );
+        for index in 0..32 {
+            let value = self.read_i_register(index);
+            if index < 10 {
+                print!(" ");
+            }
+            print!("x{index}  ");
+            print!("{:08x}  ", value.unsigned());
+            println!("{}", value.signed());
+        }
+        println!();
+    }
+
+    fn dump_memory(&self) {
+        const ROW_SIZE: usize = 0x10;
+        print!("   ");
+        for column_index in 0..ROW_SIZE {
+            print!("{column_index:02x} ");
+        }
+        println!();
+        let rows = MEMORY.div_ceil(ROW_SIZE);
+        for row_index in 0..rows {
+            print!("{row_index:02x} ");
+            for column_index in 0..ROW_SIZE {
+                let address = row_index * ROW_SIZE + column_index;
+                if address >= MEMORY {
+                    break;
+                }
+                let data = self.read_memory_8(address).unsigned();
+                print!("{data:02x} ");
+            }
+            println!();
+        }
+        println!();
+    }
+}
+
 fn main() {
     let code = "\
-# construct string
-# x1 = string address
-addi x1, x0, 256
-# x2 = byte to store
-# H
-addi x2, x0, 72
-sb x2, 0(x1)
-# e
-addi x2, x0, 101
-sb x2, 1(x1)
-# l
-addi x2, x0, 108
-sb x2, 2(x1)
-# l
-addi x2, x0, 108
-sb x2, 3(x1)
-# o
-addi x2, x0, 111
-sb x2, 4(x1)
-# space
-addi x2, x0, 32
-sb x2, 5(x1)
-# w
-addi x2, x0, 119
-sb x2, 6(x1)
-# o
-addi x2, x0, 111
-sb x2, 7(x1)
-# r
-addi x2, x0, 114
-sb x2, 8(x1)
-# l
-addi x2, x0, 108
-sb x2, 9(x1)
-# d
-addi x2, x0, 100
-sb x2, 10(x1)
-# !
-addi x2, x0, 33
-sb x2, 11(x1)
-# newline
-addi x2, x0, 10
-sb x2, 12(x1)
-# null
-addi x2, x0, 0
-sb x2, 13(x1)
+jal x0, main
 
-# print string
-addi x10, x0, 2
-addi x11, x1, 0
+# CONTRACT:
+# before:
+# - x10 = pointer to first byte of string
+# after:
+# - x10 = pointer to terminal null byte of string
+# - x5 undefined
+string_end:
+# x10 = pointer to first byte
+# x10 = pointer to current byte
+string_end__continue:
+lb x5, 0(x10)
+beq x5, x0, string_end__break
+addi x10, x10, 1
+jal x0, string_end__continue
+string_end__break:
+# x10 = pointer to last byte
+jalr x0, x1, 0
+
+# CONTRACT:
+# before:
+# - x10 = in-bounds pointer
+# after:
+# - x10 unchanged
+# - x11 undefined
+# side effects:
+# - writes string acquired from user to x10
+request_input:
+# x10 = pointer to future first byte of string
+addi x11, x10, 0
+addi x10, x0, 3
+# does the user-input and string-storing things
 ecall
+addi x10, x11, 0
+jalr x0, x1, 0
+
+# CONTRACT:
+# before:
+# - x10 = pointer to string
+# after:
+# - x10 unchanged
+# - x11 undefined
+# side effects:
+# - prints string at x10
+print_string:
+# x10 = pointer to first byte of string
+addi x11, x10, 0
+addi x10, x0, 2
+# does the printing
+ecall
+addi x10, x11, 0
+jalr x0, x1, 0
+
+# CONTRACT:
+# before:
+# - x10 = pointer to string
+# - x11 = valid string byte (i.e. lower 8 bits not all 0)
+# after:
+# - x10 unchanged
+# - x11 unchanged
+# - x5 undefined
+# - x6 undefined
+# - x7 undefined
+# side effects:
+# - appends lower byte of x11 to string at x10 (preserving null termination)
+append_to_string:
+# save return address and x10
+addi x6, x1, 0
+addi x7, x10, 0
+# x10 = pointer to first byte of string
+# x11 = byte to append
+# string_end doesn't touch x11 (but it does touch x5!)
+jal x1, string_end
+# x10 = pointer to last byte of string
+# overwrite terminal null
+sb x11, 0(x10)
+# restore null termination
+sb x0, 1(x10)
+# restore return address and x10
+addi x1, x6, 0
+addi x10, x7, 0
+# return
+jalr x0, x1, 0
+
+# CONTRACT:
+# before:
+# - x10 = pointer to string
+# - x11 = valid string byte (i.e. lower 8 bits not all 0)
+# after:
+# - x10 unchanged
+# - x11 unchanged
+# - x5 undefined
+# - x6 undefined
+# - x7 undefined
+# - x28 undefined
+# side effects:
+# - prepends lower byte of x11 to string at x10 (preserving null termination)
+prepend_to_string:
+# save return address and x10
+addi x6, x1, 0
+addi x7, x10, 0
+# x10 = pointer to first byte of string
+# x11 = byte to prepend
+# string_end doesn't touch x11
+jal x1, string_end
+# move all bytes one up
+# x10 = pointer to terminal null byte of string
+# x10 = pointer to current byte
+prepend_to_string__continue:
+# move byte one up
+lb x28, 0(x10)
+sb x28, 1(x10)
+# decrement x10
+addi x10, x10, -1
+bge x10, x7, prepend_to_string__continue
+# x10 = pointer to first byte of string - 1
+# (because only then does the loop break)
+addi x10, x10, 1
+# prepend byte
+sb x11, 0(x10)
+# restore return address
+addi x1, x6, 0
+# return
+jalr x0, x1, 0
+
+ask_for_name:
+# save return address
+addi x29, x1, 0
+# x10 = string address
+addi x10, x0, 1024
+# initialize as empty string
+sw x0, 0(x10)
+# append chars one by one
+# N
+addi x11, x0, 0x4e
+jal x1, append_to_string
+# a
+addi x11, x0, 0x61
+jal x1, append_to_string
+# m
+addi x11, x0, 0x6d
+jal x1, append_to_string
+# e
+addi x11, x0, 0x65
+jal x1, append_to_string
+# ?
+addi x11, x0, 0x3f
+jal x1, append_to_string
+# newline
+addi x11, x0, 0x0a
+jal x1, append_to_string
+# print the string
+jal x1, print_string
+
+jal x1, request_input
+# space
+addi x11, x0, 0x20
+jal x1, prepend_to_string
+# ,
+addi x11, x0, 0x2c
+jal x1, prepend_to_string
+# o
+addi x11, x0, 0x6f
+jal x1, prepend_to_string
+# l
+addi x11, x0, 0x6c
+jal x1, prepend_to_string
+# l
+addi x11, x0, 0x6c
+jal x1, prepend_to_string
+# e
+addi x11, x0, 0x65
+jal x1, prepend_to_string
+# H
+addi x11, x0, 0x48
+jal x1, prepend_to_string
+# newline
+addi x11, x0, 0x0a
+jal x1, prepend_to_string
+# [name]
+# !
+addi x11, x0, 0x21
+jal x1, append_to_string
+# newline
+addi x11, x0, 0x0a
+jal x1, append_to_string
+# newline
+addi x11, x0, 0x0a
+jal x1, append_to_string
+# print the string
+jal x1, print_string
+
+# restore return address
+addi x1, x29, 0
+# return
+jalr x0, x1, 0
+
+main:
+jal x1, ask_for_name
 ebreak
 ";
     let instructions = assemble(code).unwrap();
 
     println!("instructions hex dump:");
-    for instruction in &instructions {
-        println!("{instruction:08x}");
+    for (index, &instruction) in instructions.iter().enumerate() {
+        println!("{:08x}  {instruction:08x}", index * 4);
     }
     println!();
     println!();
 
-    let mut runtime = Runtime::<0x200>::new();
+    let mut runtime = Runtime::<2048>::new();
     for (index, instruction) in instructions.into_iter().enumerate() {
         runtime.write_to_memory_32(index * 4, instruction);
     }
@@ -458,16 +653,7 @@ ebreak
                         match a0_value.unsigned() {
                             0 => {
                                 // print registers
-                                println!("reg  hex.....  dec");
-                                for index in 0..32 {
-                                    let value = runtime.read_i_register(index);
-                                    if index < 10 {
-                                        print!(" ");
-                                    }
-                                    print!("x{index}  ");
-                                    print!("{:08x}  ", value.unsigned());
-                                    println!("{}", value.signed());
-                                }
+                                runtime.dump_registers();
                             }
                             1 => {
                                 // print register specified by a1
@@ -510,6 +696,35 @@ ebreak
                                     }
                                 }
                             }
+                            3 => {
+                                // store user-input null-terminated string at memory address in a1
+                                // user input is trimmed before being written to memory
+                                let a1_value = runtime.read_i_register(11);
+                                let address = a1_value.unsigned() as usize;
+                                if address >= runtime.memory.len() {
+                                    println!("bad memory address {address}");
+                                } else {
+                                    let mut buffer = String::new();
+                                    if let Err(error) = stdin().read_line(&mut buffer) {
+                                        println!("couldn't read user input: {error:?}");
+                                        // store an empty string instead
+                                    }
+                                    let string = buffer.trim();
+                                    let bytes = string.as_bytes();
+                                    let mut running_address = address;
+                                    for &byte in bytes {
+                                        if byte == 0 {
+                                            println!("null byte in user input");
+                                            // ignore the rest of the string
+                                            break;
+                                        }
+                                        runtime.write_to_memory_8(running_address, byte);
+                                        running_address = running_address.wrapping_add(1);
+                                        running_address %= runtime.memory.len();
+                                    }
+                                    runtime.write_to_memory_8(running_address, 0u8);
+                                }
+                            }
                             other => {
                                 println!("unrecognized ecall request code: {other}");
                             }
@@ -521,11 +736,18 @@ ebreak
                     ExecutionStatus::EnvironmentBreakExecuted => {
                         println!("environment break executed, exiting program");
                         break;
+                        // println!("environment break executed");
+                        // let program_counter = runtime.read_program_counter();
+                        // runtime
+                        //     .write_to_program_counter(program_counter.unsigned().wrapping_add(4));
                     }
                 }
             }
             Err(error) => {
                 println!("execution error encountered: {error:?}, exiting program");
+                println!();
+                runtime.dump_registers();
+                runtime.dump_memory();
                 break;
             }
         }
